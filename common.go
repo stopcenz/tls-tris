@@ -84,6 +84,7 @@ const (
 	extensionSignatureAlgorithms     uint16 = 13
 	extensionALPN                    uint16 = 16
 	extensionSCT                     uint16 = 18 // https://tools.ietf.org/html/rfc6962#section-6
+	extensionPadding                 uint16 = 21 // https://datatracker.ietf.org/doc/html/rfc7685
 	extensionEMS                     uint16 = 23
 	extensionSessionTicket           uint16 = 35
 	extensionPreSharedKey            uint16 = 41
@@ -317,7 +318,7 @@ type ClientHelloInfo struct {
 	// client is using SNI (see
 	// http://tools.ietf.org/html/rfc4366#section-3.1).
 	ServerName string
-
+	
 	// SupportedCurves lists the elliptic curves supported by the client.
 	// SupportedCurves is set only if the Supported Elliptic Curves
 	// Extension is being used (see
@@ -515,6 +516,13 @@ type Config struct {
 	// in the client's handshake to support virtual hosting unless it is
 	// an IP address.
 	ServerName string
+	FakeServerName string
+	
+	// RFC 7685 - https://datatracker.ietf.org/doc/html/rfc7685
+	// TLS Padding value:
+	// -1 - disable extention
+	// 0..65535 bytes shift (+4 bytes head)
+	Padding int
 
 	// ClientAuth determines the server's policy for
 	// TLS Client Authentication. The default is NoClientCert.
@@ -716,6 +724,8 @@ func (c *Config) Clone() *Config {
 		RootCAs:                     c.RootCAs,
 		NextProtos:                  c.NextProtos,
 		ServerName:                  c.ServerName,
+		FakeServerName:              c.FakeServerName,
+		Padding:                     c.Padding,
 		ClientAuth:                  c.ClientAuth,
 		ClientCAs:                   c.ClientCAs,
 		InsecureSkipVerify:          c.InsecureSkipVerify,

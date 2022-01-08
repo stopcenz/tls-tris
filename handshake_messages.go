@@ -34,6 +34,8 @@ type clientHelloMsg struct {
 	nextProtoNeg                     bool
 	serverName                       string
 	encryptedServerName              []byte
+	fakeServerName                   string
+	padding                          int
 	ocspStapling                     bool
 	scts                             bool
 	supportedCurves                  []CurveID
@@ -118,6 +120,8 @@ func (m *clientHelloMsg) equal(i interface{}) bool {
 		m.nextProtoNeg == m1.nextProtoNeg &&
 		m.serverName == m1.serverName &&
 		bytes.Equal(m.encryptedServerName, m1.encryptedServerName) &&
+		m.fakeServerName == m1.fakeServerName &&
+		m.padding == m1.padding &&
 		m.ocspStapling == m1.ocspStapling &&
 		m.scts == m1.scts &&
 		eqCurveIDs(m.supportedCurves, m1.supportedCurves) &&
@@ -140,7 +144,6 @@ func (m *clientHelloMsg) marshal() []byte {
 	if m.raw != nil {
 		return m.raw
 	}
-
 	length := 2 + 32 + 1 + len(m.sessionId) + 2 + len(m.cipherSuites)*2 + 1 + len(m.compressionMethods)
 	numExtensions := 0
 	extensionsLength := 0
@@ -152,12 +155,22 @@ func (m *clientHelloMsg) marshal() []byte {
 		extensionsLength += 1 + 2 + 2
 		numExtensions++
 	}
+/*
 	if len(m.serverName) > 0 {
 		extensionsLength += 5 + len(m.serverName)
 		numExtensions++
 	}
+*/
+	if len(m.fakeServerName) > 0 {
+		extensionsLength += 5 + len(m.fakeServerName)
+		numExtensions++
+	}
 	if len(m.encryptedServerName) > 0 {
 		extensionsLength += len(m.encryptedServerName)
+		numExtensions++
+	}
+	if m.padding >= 0 {
+		extensionsLength += m.padding
 		numExtensions++
 	}
 	if len(m.supportedCurves) > 0 {
@@ -256,6 +269,7 @@ func (m *clientHelloMsg) marshal() []byte {
 		// The length is always 0
 		z = z[4:]
 	}
+/*
 	if len(m.serverName) > 0 {
 		z[0] = byte(extensionServerName >> 8)
 		z[1] = byte(extensionServerName & 0xff)
@@ -290,6 +304,7 @@ func (m *clientHelloMsg) marshal() []byte {
 		copy(z[5:], []byte(m.serverName))
 		z = z[l:]
 	}
+*/
 	if len(m.encryptedServerName) > 0 {
 		l := len(m.encryptedServerName)
 		binary.BigEndian.PutUint16(z, extensionEncryptedServerName)
@@ -450,6 +465,49 @@ func (m *clientHelloMsg) marshal() []byte {
 		binary.BigEndian.PutUint16(z, extensionEMS)
 		z = z[4:]
 	}
+	if m.padding >= 0 {		
+		l := uint16(m.padding)
+		z[0] = byte(extensionPadding >> 8)
+		z[1] = byte(extensionPadding & 0xff)
+		z[2] = byte(l >> 8)
+		z[3] = byte(l & 0xff)
+		// other bytes is zero
+		z = z[4+l:]
+	}
+	if len(m.fakeServerName) > 0 {
+		z[0] = byte(extensionServerName >> 8)
+		z[1] = byte(extensionServerName & 0xff)
+		l := len(m.fakeServerName) + 5
+		z[2] = byte(l >> 8)
+		z[3] = byte(l)
+		z = z[4:]
+
+		// RFC 3546, section 3.1
+		//
+		// struct {
+		//     NameType name_type;
+		//     select (name_type) {
+		//         case host_name: HostName;
+		//     } name;
+		// } ServerName;
+		//
+		// enum {
+		//     host_name(0), (255)
+		// } NameType;
+		//
+		// opaque HostName<1..2^16-1>;
+		//
+		// struct {
+		//     ServerName server_name_list<1..2^16-1>
+		// } ServerNameList;
+
+		z[0] = byte((len(m.fakeServerName) + 3) >> 8)
+		z[1] = byte(len(m.fakeServerName) + 3)
+		z[3] = byte(len(m.fakeServerName) >> 8)
+		z[4] = byte(len(m.fakeServerName))
+		copy(z[5:], []byte(m.fakeServerName))
+		z = z[l:]
+	}
 
 	m.raw = x
 
@@ -504,6 +562,8 @@ func (m *clientHelloMsg) unmarshal(data []byte) alert {
 	m.nextProtoNeg = false
 	m.serverName = ""
 	m.encryptedServerName = nil
+	m.fakeServerName = ""
+	m.padding = -1
 	m.ocspStapling = false
 	m.ticketSupported = false
 	m.sessionTicket = nil

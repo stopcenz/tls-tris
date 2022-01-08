@@ -62,6 +62,8 @@ func makeClientHello(config *Config) (*clientHelloMsg, error) {
 		ocspStapling:                 true,
 		scts:                         true,
 		serverName:                   hostnameInSNI(config.ServerName),
+		fakeServerName:               config.FakeServerName,
+		padding:                      config.Padding,
 		supportedCurves:              config.curvePreferences(),
 		supportedPoints:              []uint8{pointFormatUncompressed},
 		nextProtoNeg:                 len(config.NextProtos) > 0,
